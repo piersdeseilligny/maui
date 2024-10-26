@@ -5,6 +5,15 @@ namespace Maui.Controls.Sample
 {
 	public static class GarbageCollectionHelper
 	{
+		public static void Collect()
+		{
+			GC.Collect();
+			GC.WaitForPendingFinalizers();
+
+			GC.Collect();
+			GC.WaitForPendingFinalizers();
+		}
+
 		public static async Task WaitForGC(params WeakReference[] references) => await WaitForGC(5000, references);
 
 		public static async Task WaitForGC(int timeout, params WeakReference[] references)
@@ -49,7 +58,7 @@ namespace Maui.Controls.Sample
 			}
 		}
 		
-		public static void RunMemoryTest(this NavigationPage navigationPage, Func<VisualElement> elementToTest)
+		public static void RunMemoryTest(this INavigation navigationPage, Func<VisualElement> elementToTest)
 		{
         	ContentPage rootPage = new ContentPage { Title = "Page 1" };
 			navigationPage.PushAsync(rootPage);

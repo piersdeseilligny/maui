@@ -18,9 +18,9 @@ namespace Microsoft.Maui.Handlers
 			return new MauiHybridWebView(this);
 		}
 
-		protected override async void ConnectHandler(WebView2 platformView)
+		protected override void ConnectHandler(WebView2 platformView)
 		{
-			await _proxy.Connect(this, platformView);
+			_proxy.Connect(this, platformView);
 
 			base.ConnectHandler(platformView);
 
@@ -33,11 +33,16 @@ namespace Microsoft.Maui.Handlers
 				platformView.Loaded += OnWebViewLoaded;
 			}
 
-			platformView.CoreWebView2.Settings.AreDevToolsEnabled = true;//EnableWebDevTools;
-			platformView.CoreWebView2.Settings.IsWebMessageEnabled = true;
-			platformView.CoreWebView2.AddWebResourceRequestedFilter($"{AppOrigin}*", CoreWebView2WebResourceContext.All);
+			PlatformView.DispatcherQueue.TryEnqueue(async () =>
+			{
+				var isWebViewInitialized = await (PlatformView as MauiHybridWebView)!.WebViewReadyTask!;
 
-			platformView.Source = new Uri(new Uri(AppOriginUri, "/").ToString());
+				if (isWebViewInitialized)
+				{
+					PlatformView.Source = new Uri(new Uri(AppOriginUri, "/").ToString());
+				}
+			});
+
 		}
 
 		void OnWebViewLoaded(object sender, RoutedEventArgs e)
@@ -67,20 +72,29 @@ namespace Microsoft.Maui.Handlers
 			base.DisconnectHandler(platformView);
 		}
 
-		public static void MapSendRawMessage(IHybridWebViewHandler handler, IHybridWebView hybridWebView, object? arg)
+		internal static void EvaluateJavaScript(IHybridWebViewHandler handler, IHybridWebView hybridWebView, EvaluateJavaScriptAsyncRequest request)
 		{
-			if (arg is not string rawMessage || handler.PlatformView is not IHybridPlatformWebView hybridPlatformWebView)
+			if (handler.PlatformView is not MauiHybridWebView hybridPlatformWebView)
 			{
 				return;
 			}
 
-			hybridPlatformWebView.SendRawMessage(rawMessage);
+			hybridPlatformWebView.RunAfterInitialize(() => hybridPlatformWebView.EvaluateJavaScript(request));
 		}
 
+		public static void MapSendRawMessage(IHybridWebViewHandler handler, IHybridWebView hybridWebView, object? arg)
+		{
+			if (arg is not HybridWebViewRawMessage hybridWebViewRawMessage || handler.PlatformView is not MauiHybridWebView hybridPlatformWebView)
+			{
+				return;
+			}
+
+			hybridPlatformWebView.RunAfterInitialize(() => hybridPlatformWebView.SendRawMessage(hybridWebViewRawMessage.Message ?? ""));
+		}
 
 		private void OnWebMessageReceived(WebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
 		{
-			VirtualView?.RawMessageReceived(args.TryGetWebMessageAsString());
+			MessageReceived(args.TryGetWebMessageAsString());
 		}
 
 		private async void OnWebResourceRequested(CoreWebView2 sender, CoreWebView2WebResourceRequestedEventArgs eventArgs)
@@ -160,15 +174,25 @@ Content-Length: {contentLength}";
 			private Window? Window => _window is not null && _window.TryGetTarget(out var w) ? w : null;
 			private HybridWebViewHandler? Handler => _handler is not null && _handler.TryGetTarget(out var h) ? h : null;
 
-			public async Task Connect(HybridWebViewHandler handler, WebView2 platformView)
+			public void Connect(HybridWebViewHandler handler, WebView2 platformView)
 			{
 				_handler = new(handler);
 
-				platformView.WebMessageReceived += OnWebMessageReceived;
+				(platformView as MauiHybridWebView)!.WebViewReadyTask = TryInitializeWebView2(platformView);
+			}
 
-				await platformView.EnsureCoreWebView2Async();
+			private async Task<bool> TryInitializeWebView2(WebView2 webView)
+			{
+				await webView.EnsureCoreWebView2Async();
 
-				platformView.CoreWebView2.WebResourceRequested += OnWebResourceRequested;
+				webView.CoreWebView2.Settings.AreDevToolsEnabled = Handler?.DeveloperTools.Enabled ?? false;
+				webView.CoreWebView2.Settings.IsWebMessageEnabled = true;
+				webView.CoreWebView2.AddWebResourceRequestedFilter($"{AppOrigin}*", CoreWebView2WebResourceContext.All);
+
+				webView.WebMessageReceived += OnWebMessageReceived;
+				webView.CoreWebView2.WebResourceRequested += OnWebResourceRequested;
+
+				return true;
 			}
 
 			private void OnWebResourceRequested(CoreWebView2 sender, CoreWebView2WebResourceRequestedEventArgs args)

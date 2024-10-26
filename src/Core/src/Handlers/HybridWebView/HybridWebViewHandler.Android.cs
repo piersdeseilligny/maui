@@ -1,9 +1,6 @@
 ﻿using System;
 using Android.Webkit;
 using Java.Interop;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using static Android.Views.ViewGroup;
 using AWebView = Android.Webkit.WebView;
 
@@ -28,7 +25,7 @@ namespace Microsoft.Maui.Handlers
 
 			// Note that this is a per-app setting and not per-control, so if you enable
 			// this, it is enabled for all Android WebViews in the app.
-			AWebView.SetWebContentsDebuggingEnabled(enabled: true); // TODO: Get from setting
+			AWebView.SetWebContentsDebuggingEnabled(enabled: DeveloperTools.Enabled);
 
 			platformView.Settings.JavaScriptEnabled = true;
 
@@ -38,7 +35,7 @@ namespace Microsoft.Maui.Handlers
 			return platformView;
 		}
 
-		private sealed class HybridWebViewJavaScriptInterface : Java.Lang.Object
+		private sealed class HybridWebViewJavaScriptInterface : HybridJavaScriptInterface
 		{
 			private readonly WeakReference<HybridWebViewHandler> _hybridWebViewHandler;
 
@@ -50,10 +47,9 @@ namespace Microsoft.Maui.Handlers
 			private HybridWebViewHandler? Handler => _hybridWebViewHandler is not null && _hybridWebViewHandler.TryGetTarget(out var h) ? h : null;
 
 			[JavascriptInterface]
-			[Export("sendRawMessage")]
-			public void SendRawMessage(string message)
+			public override void SendMessage(string message)
 			{
-				Handler?.VirtualView?.RawMessageReceived(message);
+				Handler?.MessageReceived(message);
 			}
 		}
 
@@ -90,14 +86,19 @@ namespace Microsoft.Maui.Handlers
 			base.DisconnectHandler(platformView);
 		}
 
+		internal static void EvaluateJavaScript(IHybridWebViewHandler handler, IHybridWebView hybridWebView, EvaluateJavaScriptAsyncRequest request)
+		{
+			handler.PlatformView.EvaluateJavaScript(request);
+		}
+
 		public static void MapSendRawMessage(IHybridWebViewHandler handler, IHybridWebView hybridWebView, object? arg)
 		{
-			if (arg is not string rawMessage || handler.PlatformView is not IHybridPlatformWebView hybridPlatformWebView)
+			if (arg is not HybridWebViewRawMessage hybridWebViewRawMessage || handler.PlatformView is not IHybridPlatformWebView hybridPlatformWebView)
 			{
 				return;
 			}
 
-			hybridPlatformWebView.SendRawMessage(rawMessage);
+			hybridPlatformWebView.SendRawMessage(hybridWebViewRawMessage.Message ?? "");
 		}
 	}
 }

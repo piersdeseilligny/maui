@@ -1,14 +1,13 @@
 #addin nuget:?package=Cake.AppleSimulator&version=0.2.0
-#load "../cake/helpers.cake"
-#load "../cake/dotnet.cake"
-#load "./devices-shared.cake"
+#load "./uitests-shared.cake"
 
-const string DefaultVersion = "17.2";
+const string DefaultVersion = "18.0";
+const string DefaultTestDevice = $"ios-simulator-64_{DefaultVersion}";
 
 // Required arguments
 string DEFAULT_IOS_PROJECT = "../../src/Controls/tests/TestCases.iOS.Tests/Controls.TestCases.iOS.Tests.csproj";
 var projectPath = Argument("project", EnvironmentVariable("IOS_TEST_PROJECT") ?? DEFAULT_IOS_PROJECT);
-var testDevice = Argument("device", EnvironmentVariable("IOS_TEST_DEVICE") ?? $"ios-simulator-64_{DefaultVersion}");
+var testDevice = Argument("device", EnvironmentVariable("IOS_TEST_DEVICE") ?? DefaultTestDevice);
 var targetFramework = Argument("tfm", EnvironmentVariable("TARGET_FRAMEWORK") ?? $"{DotnetVersion}-ios");
 var binlogArg = Argument("binlog", EnvironmentVariable("IOS_TEST_BINLOG") ?? "");
 var testApp = Argument("app", EnvironmentVariable("IOS_TEST_APP") ?? "");
@@ -45,6 +44,12 @@ var dotnetToolPath = GetDotnetToolPath();
 Setup(context =>
 {
 	LogSetupInfo(dotnetToolPath);
+
+	if (!deviceBoot)
+	{
+		return;
+	}
+
 	PerformCleanupIfNeeded(deviceCleanupEnabled, false);
 
 	// Device or simulator setup
@@ -59,9 +64,20 @@ Setup(context =>
 	}
 });
 
-Teardown(context => PerformCleanupIfNeeded(deviceCleanupEnabled, true));
+Teardown(context => 
+{
+	if (!deviceBoot || targetBoot || string.Equals(TARGET, "uitest-prepare", StringComparison.OrdinalIgnoreCase))
+	{
+		return;
+	}
+
+	PerformCleanupIfNeeded(deviceCleanupEnabled, true);
+});
 
 Task("Cleanup");
+
+// Todo this doesn't work for iOS currently
+// Task("boot");
 
 Task("Build")
 	.WithCriteria(!string.IsNullOrEmpty(projectPath))
@@ -78,20 +94,27 @@ Task("Test")
 	});
 
 Task("uitest-build")
+	.IsDependentOn("dotnet-buildtasks")
 	.Does(() =>
 	{
 		ExecuteBuildUITestApp(testAppProjectPath, testDevice, binlogDirectory, configuration, targetFramework, runtimeIdentifier, dotnetToolPath);
+	});
 
+Task("uitest-prepare")
+	.Does(() =>
+	{
+		ExecutePrepareUITests(projectPath, testAppProjectPath, testDevice, testResultsPath, binlogDirectory, configuration, targetFramework, runtimeIdentifier, iosVersion, dotnetToolPath);
 	});
 
 Task("uitest")
+	.IsDependentOn("uitest-prepare")
 	.Does(() =>
 	{
 		ExecuteUITests(projectPath, testAppProjectPath, testDevice, testResultsPath, binlogDirectory, configuration, targetFramework, runtimeIdentifier, iosVersion, dotnetToolPath);
-
 	});
 
 Task("cg-uitest")
+	.IsDependentOn("dotnet-buildtasks")
 	.Does(() =>
 	{
 		ExecuteCGLegacyUITests(projectPath, testAppProjectPath, testDevice, testResultsPath, configuration, targetFramework, runtimeIdentifier, iosVersion, dotnetToolPath);
@@ -184,15 +207,14 @@ void ExecuteTests(string project, string device, string resultsDir, string confi
 	Information("Testing completed.");
 }
 
-void ExecuteUITests(string project, string app, string device, string resultsDir, string binDir, string config, string tfm, string rid, string ver, string toolPath)
+void ExecutePrepareUITests(string project, string app, string device, string resultsDir, string binDir, string config, string tfm, string rid, string ver, string toolPath)
 {
-	Information("Starting UI Tests...");
+	Information("Preparing UI Tests...");
 	Information($"Testing Device: {device}");
 	Information($"Testing App Project: {app}");
-	Information($"Results Directory: {resultsDir}");
 	Information($"USE_NATIVE_AOT: {USE_NATIVE_AOT}");
 	
-	string testApp = GetTestApplications(app, device, config, tfm, rid).FirstOrDefault();
+	var testApp = GetTestApplications(app, device, config, tfm, rid).FirstOrDefault();
 
 	Information($"Testing App found: {testApp}");
 	
@@ -202,6 +224,11 @@ void ExecuteUITests(string project, string app, string device, string resultsDir
 	}
 
 	InstallIpa(testApp, "", device, resultsDir, ver, toolPath);
+}
+
+void ExecuteUITests(string project, string app, string device, string resultsDir, string binDir, string config, string tfm, string rid, string ver, string toolPath)
+{
+	Information($"Results Directory: {resultsDir}");
 
 	Information("Build UITests project {0}", project);
 
@@ -301,7 +328,7 @@ void ExecuteCGLegacyUITests(string project, string appProject, string device, st
 	//set env var for the app path for Xamarin.UITest setup
 	SetEnvironmentVariable("iOS_APP", $"{testApp}");
 
-	var resultName = $"{System.IO.Path.GetFileNameWithoutExtension(project)}-{config}-{DateTime.UtcNow.ToFileTimeUtc()}";
+	var resultName = $"{System.IO.Path.GetFileNameWithoutExtension(project)}-{config}-{DateTime.Now.ToString("yyyy-MM-dd-HH-mm-ss")}";
 	Information("Run UITests project {0}", resultName);
 	RunTestWithLocalDotNet(
 		project,
@@ -324,6 +351,7 @@ void PerformCleanupIfNeeded(bool cleanupEnabled, bool createDeviceLogs)
 		var sims = ListAppleSimulators().Where(s => s.Name.Contains("XHarness")).ToArray();
 		foreach (var sim in sims)
 		{
+			var timestamp = DateTime.Now.ToString("yyyy-MM-dd-HH-mm-ss");
 			if(createDeviceLogs)
 			{
 				try
@@ -333,7 +361,7 @@ void PerformCleanupIfNeeded(bool cleanupEnabled, bool createDeviceLogs)
 					StartProcess("zip", new ProcessSettings {
 						Arguments = new ProcessArgumentBuilder()
 							.Append("-9r")
-							.AppendQuoted($"{logDirectory}/DiagnosticReports_{sim.UDID}.zip")
+							.AppendQuoted($"{logDirectory}/DiagnosticReports_{sim.UDID}_{timestamp}.zip")
 							.AppendQuoted($"{homeDirectory}/Library/Logs/DiagnosticReports/"),
 						RedirectStandardOutput = false
 					});
@@ -342,28 +370,28 @@ void PerformCleanupIfNeeded(bool cleanupEnabled, bool createDeviceLogs)
 					StartProcess("zip", new ProcessSettings {
 						Arguments = new ProcessArgumentBuilder()
 							.Append("-9r")
-							.AppendQuoted($"{logDirectory}/CoreSimulator_{sim.UDID}.zip")
+							.AppendQuoted($"{logDirectory}/CoreSimulator_{sim.UDID}_{timestamp}.zip")
 							.AppendQuoted($"{homeDirectory}/Library/Logs/CoreSimulator/{sim.UDID}"),
 						RedirectStandardOutput = false
 					});
 
-					StartProcess("xcrun", $"simctl spawn {sim.UDID} log collect --output {homeDirectory}/{sim.UDID}_log.logarchive");
+					StartProcess("xcrun", $"simctl spawn {sim.UDID} log collect --output {homeDirectory}/{sim.UDID}_{timestamp}_log.logarchive");
 
 					StartProcess("zip", new ProcessSettings {
 						Arguments = new ProcessArgumentBuilder()
 							.Append("-9r")
-							.AppendQuoted($"{logDirectory}/{sim.UDID}_log.logarchive.zip")
-							.AppendQuoted($"{homeDirectory}/{sim.UDID}_log.logarchive"),
+							.AppendQuoted($"{logDirectory}/{sim.UDID}_{timestamp}_log.logarchive.zip")
+							.AppendQuoted($"{homeDirectory}/{sim.UDID}_{timestamp}_log.logarchive"),
 						RedirectStandardOutput = false
 					});
 
-					var screenshotPath = $"{testResultsPath}/{sim.UDID}_screenshot.png";
+					var screenshotPath = $"{testResultsPath}/{sim.UDID}_{timestamp}_screenshot.png";
 					StartProcess("xcrun", $"simctl io {sim.UDID} screenshot {screenshotPath}");
 				}
 				catch(Exception ex)
 				{
 					Information($"Failed to collect logs for simulator {sim.Name} ({sim.UDID}): {ex.Message}");
-					Information($"Command Executed: simctl spawn {sim.UDID} log collect --output {logDirectory}/{sim.UDID}_log.logarchive");
+					Information($"Command Executed: simctl spawn {sim.UDID} log collect --output {logDirectory}/{sim.UDID}_{timestamp}_log.logarchive");
 				}
 			}
 
@@ -384,7 +412,7 @@ string GetDefaultRuntimeIdentifier(string testDeviceIdentifier)
 
 void InstallIpa(string testApp, string testAppPackageName, string testDevice, string testResultsDirectory, string version, string toolPath)
 {
-	Information("Install with xharness: {0}", testApp);
+	Information("Install with xharness: {0} testDevice:{1}", testApp, testDevice);
 	var settings = new DotNetToolSettings
 	{
 		ToolPath = toolPath,
@@ -396,6 +424,7 @@ void InstallIpa(string testApp, string testAppPackageName, string testDevice, st
 							$"--targets=\"{testDevice}\" " +
 							$"--output-directory=\"{testResultsDirectory}\" " +
 							$"--verbosity=\"Debug\" ");
+
 			if (testDevice.Contains("device"))
 			{
 				if (string.IsNullOrEmpty(DEVICE_UDID))
@@ -434,12 +463,14 @@ void InstallIpa(string testApp, string testAppPackageName, string testDevice, st
 		}
 		else
 		{
-			var simulatorName = "XHarness";
-			Information("Looking for simulator: {0} iosversion {1}", simulatorName, iosVersionToRun);
+			var UDID = GetUDID(testDevice, dotnetToolPath);
 			var sims = ListAppleSimulators();
-			var simXH = sims.Where(s => s.Name.Contains(simulatorName) && s.Name.Contains(iosVersionToRun)).FirstOrDefault();
+
+			var simXH = sims.Where(s => s.UDID == UDID).FirstOrDefault();
 			if (simXH == null)
+			{
 				throw new Exception("No simulator was found to run tests on.");
+			}
 
 			deviceToRun = simXH.UDID;
 			DEVICE_NAME = simXH.Name;
@@ -451,6 +482,40 @@ void InstallIpa(string testApp, string testAppPackageName, string testDevice, st
 		SetEnvironmentVariable("DEVICE_NAME", DEVICE_NAME);
 		SetEnvironmentVariable("PLATFORM_VERSION", iosVersionToRun);
 	}
+}
+
+string GetUDID(string testDevice, string tool)
+{
+	Information("Looking for simulator: {0}", testDevice);
+	string result = string.Empty;
+
+	DotNetTool("tool", new DotNetToolSettings
+	{
+		ToolPath = tool,
+		ArgumentCustomization = args => args.Append($"run xharness apple device {testDevice}"),
+		SetupProcessSettings = processSettings => 
+		{
+			processSettings.RedirectStandardOutput = true;
+			processSettings.RedirectedStandardOutputHandler = line => 
+			{
+				// The output from this command returns the UDID of the simulator
+				// and NULL so we're filtering out the NULL
+				if (!string.IsNullOrWhiteSpace(line))
+				{
+					result = line;
+				}
+				
+				return line;
+			};
+		}
+	});
+
+	if(!string.IsNullOrWhiteSpace(result))
+		Information("Yay we found your device: {0}", result);
+	else
+		Information("No device found installed: {0}", testDevice);
+
+	return result;
 }
 
 void GetSimulators(string version, string tool)

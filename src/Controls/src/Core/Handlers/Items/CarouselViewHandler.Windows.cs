@@ -38,7 +38,7 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 		protected override void ConnectHandler(ListViewBase platformView)
 		{
 			ItemsView.Scrolled += CarouselScrolled;
-			ListViewBase.SizeChanged += OnListViewSizeChanged;
+			platformView.SizeChanged += OnListViewSizeChanged;
 
 			UpdateScrollBarVisibilityForLoop();
 
@@ -50,8 +50,11 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 			if (ItemsView != null)
 				ItemsView.Scrolled -= CarouselScrolled;
 
-			platformView.SizeChanged -= OnListViewSizeChanged;
-			_proxy.Unsubscribe();
+			if (platformView != null)
+			{
+				platformView.SizeChanged -= OnListViewSizeChanged;
+				_proxy.Unsubscribe();
+			}
 
 			if (_scrollViewer != null)
 			{
@@ -100,6 +103,7 @@ namespace Microsoft.Maui.Controls.Handlers.Items
 
 		protected override ICollectionView GetCollectionView(CollectionViewSource collectionViewSource)
 		{
+			_loopableCollectionView?.CleanUp();
 			_loopableCollectionView = new LoopableCollectionView(base.GetCollectionView(collectionViewSource));
 
 			if (Element is CarouselView cv && cv.Loop)

@@ -1,15 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
-using System.Net;
 using System.Runtime.Versioning;
-using System.Text;
 using System.Threading.Tasks;
 using Foundation;
-using Microsoft.Extensions.Logging;
-using Microsoft.Maui.Graphics;
 using UIKit;
 using WebKit;
 using RectangleF = CoreGraphics.CGRect;
@@ -44,13 +38,13 @@ namespace Microsoft.Maui.Handlers
 			// iOS WKWebView doesn't allow handling 'http'/'https' schemes, so we use the fake 'app' scheme
 			config.SetUrlSchemeHandler(new SchemeHandler(this), urlScheme: "app");
 
-			var webview = new WKWebView(RectangleF.Empty, config)
+			var webview = new MauiHybridWebView(this, RectangleF.Empty, config)
 			{
 				BackgroundColor = UIColor.Clear,
 				AutosizesSubviews = true
 			};
 
-			if (true)//DeveloperTools.Enabled)
+			if (DeveloperTools.Enabled)
 			{
 				// Legacy Developer Extras setting.
 				config.Preferences.SetValueForKey(NSObject.FromObject(true), new NSString("developerExtrasEnabled"));
@@ -62,22 +56,27 @@ namespace Microsoft.Maui.Handlers
 				}
 			}
 
-			return new MauiHybridWebView(this, RectangleF.Empty, config);
+			return webview;
+		}
+
+		internal static void EvaluateJavaScript(IHybridWebViewHandler handler, IHybridWebView hybridWebView, EvaluateJavaScriptAsyncRequest request)
+		{
+			handler.PlatformView.EvaluateJavaScript(request);
 		}
 
 		public static void MapSendRawMessage(IHybridWebViewHandler handler, IHybridWebView hybridWebView, object? arg)
 		{
-			if (arg is not string rawMessage || handler.PlatformView is not IHybridPlatformWebView hybridPlatformWebView)
+			if (arg is not HybridWebViewRawMessage hybridWebViewRawMessage || handler.PlatformView is not IHybridPlatformWebView hybridPlatformWebView)
 			{
 				return;
 			}
 
-			hybridPlatformWebView.SendRawMessage(rawMessage);
+			hybridPlatformWebView.SendRawMessage(hybridWebViewRawMessage.Message ?? "");
 		}
 
 		private void MessageReceived(Uri uri, string message)
 		{
-			VirtualView?.RawMessageReceived(message);
+			MessageReceived(message);
 		}
 
 		protected override void ConnectHandler(WKWebView platformView)

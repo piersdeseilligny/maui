@@ -23,7 +23,7 @@ namespace Microsoft.Maui.Controls
 		/// <summary>Bindable property for <see cref="NavigableElement.Navigation"/>.</summary>
 		public new static readonly BindableProperty NavigationProperty = NavigableElement.NavigationProperty;
 
-		/// <summary>Bindable property for <see cref="NavigableElement.Style"/>.</summary>
+		/// <inheritdoc/>
 		public new static readonly BindableProperty StyleProperty = NavigableElement.StyleProperty;
 
 		bool _inputTransparentExplicit = (bool)InputTransparentProperty.DefaultValue;
@@ -1191,11 +1191,8 @@ namespace Microsoft.Maui.Controls
 		/// <param name="flags">A value that controls whether margins are included in the returned size.</param>
 		/// <returns>The minimum size that an element needs in order to be displayed on the device.</returns>
 		/// <remarks>If the minimum size that the element needs in order to be displayed on the device is larger than can be accommodated by <paramref name="widthConstraint" /> and <paramref name="heightConstraint" />, the return value may represent a rectangle that is larger in either one or both of those parameters.</remarks>
-#pragma warning disable RS0016 // Add public types and members to the declared API
-
 		[Obsolete("Use Measure with no flags.")]
 		public virtual SizeRequest Measure(double widthConstraint, double heightConstraint, MeasureFlags flags = MeasureFlags.None)
-#pragma warning restore RS0016 // Add public types and members to the declared API
 		{
 			bool includeMargins = (flags & MeasureFlags.IncludeMargins) != 0;
 			Thickness margin = default(Thickness);
@@ -1273,9 +1270,7 @@ namespace Microsoft.Maui.Controls
 		{
 			base.OnChildAdded(child);
 
-			var view = child as View;
-
-			if (view != null)
+			if (child is View view)
 			{
 				ComputeConstraintForView(view);
 			}
@@ -1368,6 +1363,7 @@ namespace Microsoft.Maui.Controls
 		/// </summary>
 		/// <remarks>For internal use only. This API can be changed or removed without notice at any time.</remarks>
 		[EditorBrowsable(EditorBrowsableState.Never)]
+		[Obsolete("Use InvalidateMeasure instead.")]
 		public void InvalidateMeasureNonVirtual(InvalidationTrigger trigger)
 		{
 			InvalidateMeasureInternal(trigger);
@@ -1393,6 +1389,35 @@ namespace Microsoft.Maui.Controls
 			}
 
 			MeasureInvalidated?.Invoke(this, new InvalidationEventArgs(trigger));
+			(Parent as VisualElement)?.OnChildMeasureInvalidatedInternal(this, trigger);
+		}
+		
+		internal virtual void OnChildMeasureInvalidatedInternal(VisualElement child, InvalidationTrigger trigger)
+		{
+			switch (trigger)
+			{
+				case InvalidationTrigger.VerticalOptionsChanged:
+				case InvalidationTrigger.HorizontalOptionsChanged:
+					// When a child changes its HorizontalOptions or VerticalOptions
+					// the size of the parent won't change, so we don't have to invalidate the measure
+					return;
+				case InvalidationTrigger.RendererReady:
+				// Undefined happens in many cases, including when `IsVisible` changes
+				case InvalidationTrigger.Undefined:
+					MeasureInvalidated?.Invoke(this, new InvalidationEventArgs(trigger));
+					(Parent as VisualElement)?.OnChildMeasureInvalidatedInternal(this, trigger);
+					return;
+				default:
+					// When visibility changes `InvalidationTrigger.Undefined` is used,
+					// so here we're sure that visibility didn't change
+					if (child.IsVisible)
+					{
+						// We need to invalidate measures only if child is actually visible
+						MeasureInvalidated?.Invoke(this, new InvalidationEventArgs(InvalidationTrigger.MeasureChanged));
+						(Parent as VisualElement)?.OnChildMeasureInvalidatedInternal(this, InvalidationTrigger.MeasureChanged);
+					}
+					return;
+			}
 		}
 
 		/// <inheritdoc/>
@@ -1734,6 +1759,7 @@ namespace Microsoft.Maui.Controls
 		/// <summary>
 		/// Gets or sets the frame this element resides in on screen.
 		/// </summary>
+		/// <remarks>Setting this property outside of <see cref="ArrangeOverride"/> won't do anything. If you want to influence this property you'll need to override <see cref="ArrangeOverride"/></remarks>
 		public Rect Frame
 		{
 			get => _frame;
@@ -1838,10 +1864,13 @@ namespace Microsoft.Maui.Controls
 		/// Positions child objects and determines a size for an element.
 		/// </summary>
 		/// <param name="bounds">The final size that the parent computes for the child in layout, provided as a <see cref="Rect"/> value.</param>
-		/// <remarks>Parent objects that implement custom layout for their child elements should call this method from their layout override implementations to form a recursive layout update.</remarks>
+		/// <remarks>
+		/// Parent objects that implement custom layout for their child elements should call this method from their layout override implementations to form a recursive layout update.
+		/// Prior to .NET 9, this method simply called <see cref="Layout"/>. If you need to revert to the old behavior, just call <see cref="Layout"/>.
+		/// </remarks>
 		public void Arrange(Rect bounds)
 		{
-			Layout(bounds);
+			ArrangeOverride(bounds);
 		}
 
 		/// <inheritdoc/>
@@ -1851,11 +1880,11 @@ namespace Microsoft.Maui.Controls
 		}
 
 		/// <summary>
-		/// Allows subclasses to override <see cref="Arrange(Rect)"/> even though
-		/// the interface has to be explicitly implemented to avoid conflict with the old <see cref="Arrange(Rect)"/> method.
+		/// Allows subclasses to implement custom Arrange logic during a controls layout pass.
 		/// </summary>
 		/// <param name="bounds">The new bounds of the element.</param>
 		/// <returns>The resulting size of this element's frame by the platform.</returns>
+		/// <remarks>Subclasses will stil want to call <see cref="ArrangeOverride"/> on the base class or call <see cref="IViewHandler.PlatformArrange"/> on the <see cref="Handler"/> .</remarks>
 		protected virtual Size ArrangeOverride(Rect bounds)
 		{
 			Frame = this.ComputeFrame(bounds);
@@ -1880,8 +1909,7 @@ namespace Microsoft.Maui.Controls
 		}
 
 		/// <summary>
-		/// Provides a way to allow subclasses (e.g., Layout) to override <see cref="InvalidateMeasure"/> even though
-		/// the interface has to be explicitly implemented to avoid conflict with the <see cref="InvalidateMeasure"/> method.
+		/// Provides a way to allow subclasses (e.g., Layout) to override <see cref="InvalidateMeasure"/>
 		/// </summary>
 		protected virtual void InvalidateMeasureOverride() => Handler?.Invoke(nameof(IView.InvalidateMeasure));
 
@@ -1898,8 +1926,7 @@ namespace Microsoft.Maui.Controls
 		}
 
 		/// <summary>
-		/// Provides a way to allow subclasses to override <see cref="Measure(double, double)"/> even though
-		/// the interface has to be explicitly implemented to avoid conflict with the old Measure method.
+		/// Allows subclasses to implement custom Measure logic during a controls measure pass.
 		/// </summary>
 		/// <param name="widthConstraint">The width constraint to request.</param>
 		/// <param name="heightConstraint">The height constraint to request.</param>

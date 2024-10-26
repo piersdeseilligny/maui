@@ -19,9 +19,10 @@ namespace Microsoft.Maui
 		private const bool IsQueryPropertyAttributeSupportedByDefault = true;
 		private const bool IsImplicitCastOperatorsUsageViaReflectionSupportedByDefault = true;
 		private const bool AreBindingInterceptorsSupportedByDefault = true;
+		private const bool IsXamlCBindingWithSourceCompilationEnabledByDefault = false;
 
 #pragma warning disable IL4000 // Return value does not match FeatureGuardAttribute 'System.Diagnostics.CodeAnalysis.RequiresUnreferencedCodeAttribute'. 
-#if !NETSTANDARD
+#if NET9_0_OR_GREATER
 		[FeatureSwitchDefinition("Microsoft.Maui.RuntimeFeature.IsIVisualAssemblyScanningEnabled")]
 		[FeatureGuard(typeof(RequiresUnreferencedCodeAttribute))]
 #endif
@@ -30,7 +31,7 @@ namespace Microsoft.Maui
 				? isEnabled
 				: IsIVisualAssemblyScanningEnabledByDefault;
 
-#if !NETSTANDARD
+#if NET9_0_OR_GREATER
 		[FeatureSwitchDefinition("Microsoft.Maui.RuntimeFeature.IsShellSearchResultsRendererDisplayMemberNameSupported")]
 		[FeatureGuard(typeof(RequiresUnreferencedCodeAttribute))]
 #endif
@@ -39,7 +40,7 @@ namespace Microsoft.Maui
 				? isSupported
 				: IsShellSearchResultsRendererDisplayMemberNameSupportedByDefault;
 
-#if !NETSTANDARD
+#if NET9_0_OR_GREATER
 		[FeatureSwitchDefinition("Microsoft.Maui.RuntimeFeature.IsQueryPropertyAttributeSupported")]
 		[FeatureGuard(typeof(RequiresUnreferencedCodeAttribute))]
 #endif
@@ -48,7 +49,7 @@ namespace Microsoft.Maui
 				? isSupported
 				: IsQueryPropertyAttributeSupportedByDefault;
 
-#if !NETSTANDARD
+#if NET9_0_OR_GREATER
 		[FeatureSwitchDefinition("Microsoft.Maui.RuntimeFeature.IsImplicitCastOperatorsUsageViaReflectionSupported")]
 		[FeatureGuard(typeof(RequiresUnreferencedCodeAttribute))]
 #endif
@@ -57,10 +58,21 @@ namespace Microsoft.Maui
 				? isSupported
 				: IsImplicitCastOperatorsUsageViaReflectionSupportedByDefault;
 
+#if NET9_0_OR_GREATER
+		[FeatureSwitchDefinition("Microsoft.Maui.RuntimeFeature.Microsoft.Maui.RuntimeFeature.AreBindingInterceptorsSupported")]
+#endif
 		internal static bool AreBindingInterceptorsSupported =>
 			AppContext.TryGetSwitch("Microsoft.Maui.RuntimeFeature.AreBindingInterceptorsSupported", out bool areSupported)
 				? areSupported
 				: AreBindingInterceptorsSupportedByDefault;
+
+#if NET9_0_OR_GREATER
+		[FeatureSwitchDefinition("Microsoft.Maui.RuntimeFeature.IsXamlCBindingWithSourceCompilationEnabled")]
+#endif
+		internal static bool IsXamlCBindingWithSourceCompilationEnabled =>
+			AppContext.TryGetSwitch("Microsoft.Maui.RuntimeFeature.IsXamlCBindingWithSourceCompilationEnabled", out bool areSupported)
+				? areSupported
+				: IsXamlCBindingWithSourceCompilationEnabledByDefault;
 #pragma warning restore IL4000
 	}
 }

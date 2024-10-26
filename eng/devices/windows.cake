@@ -1,12 +1,9 @@
-#load "../cake/helpers.cake"
-#load "../cake/dotnet.cake"
-#load "./devices-shared.cake"
+#load "./uitests-shared.cake"
 
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-const string defaultVersion = "10.0.19041";
-const string dotnetVersion = "net9.0";
+const string defaultVersion = "10.0.19041.0";
 
 // required
 string DEFAULT_WINDOWS_PROJECT = "../../src/Controls/tests/TestCases.WinUI.Tests/Controls.TestCases.WinUI.Tests.csproj";
@@ -19,7 +16,7 @@ var PACKAGEID = Argument("packageid", EnvironmentVariable("WINDOWS_TEST_PACKAGE_
 // optional
 var DOTNET_PATH = Argument("dotnet-path", EnvironmentVariable("DOTNET_PATH"));
 var DOTNET_ROOT = Argument("dotnet-root", EnvironmentVariable("DOTNET_ROOT"));
-var TARGET_FRAMEWORK = Argument("tfm", EnvironmentVariable("TARGET_FRAMEWORK") ?? $"{dotnetVersion}-windows{defaultVersion}");
+var TARGET_FRAMEWORK = Argument("tfm", EnvironmentVariable("TARGET_FRAMEWORK") ?? $"{DotnetVersion}-windows{defaultVersion}");
 var BINLOG_ARG = Argument("binlog", EnvironmentVariable("WINDOWS_TEST_BINLOG") ?? "");
 DirectoryPath BINLOG_DIR = string.IsNullOrEmpty(BINLOG_ARG) && !string.IsNullOrEmpty(PROJECT.FullPath) ? PROJECT.GetDirectory() : BINLOG_ARG;
 var TEST_APP = Argument("app", EnvironmentVariable("WINDOWS_TEST_APP") ?? "");
@@ -30,6 +27,8 @@ var TEST_RESULTS = Argument("results", EnvironmentVariable("WINDOWS_TEST_RESULTS
 string CONFIGURATION = Argument("configuration", "Debug");
 
 var windowsVersion = Argument("apiversion", EnvironmentVariable("WINDOWS_PLATFORM_VERSION") ?? defaultVersion);
+
+var dotnetToolPath = GetDotnetToolPath();
 
 // other
 string PLATFORM = "windows";
@@ -57,6 +56,7 @@ Information("Build Binary Log (binlog): {0}", BINLOG_DIR);
 Information("Build Platform: {0}", PLATFORM);
 Information("Build Configuration: {0}", CONFIGURATION);
 
+Information("Target Framework: {0}", TARGET_FRAMEWORK);
 Information("Windows version: {0}", windowsVersion);
 
 Setup(context =>
@@ -141,23 +141,19 @@ Task("Build")
 	var name = System.IO.Path.GetFileNameWithoutExtension(PROJECT.FullPath);
 	var binlog = $"{BINLOG_DIR}/{name}-{CONFIGURATION}-windows.binlog";
 
-	var localDotnetRoot = MakeAbsolute(Directory("../../bin/dotnet/"));
+    var localDotnetRoot = MakeAbsolute(Directory("../../.dotnet/"));
 	Information("new dotnet root: {0}", localDotnetRoot);
-
 	DOTNET_ROOT = localDotnetRoot.ToString();
-
 	SetDotNetEnvironmentVariables(DOTNET_ROOT);
-
-	var toolPath = $"{localDotnetRoot}/dotnet.exe";
-
-	Information("toolPath: {0}", toolPath);
+	
+    Information("toolPath: {0}", dotnetToolPath);
 
 	Information("Building and publishing device test app");
 
 	// Build the app in publish mode
 	// Using the certificate thumbprint for the cert we just created
 	var s = new DotNetPublishSettings();
-	s.ToolPath = toolPath;
+	s.ToolPath = dotnetToolPath;
 	s.Configuration = CONFIGURATION;
 	s.Framework = TARGET_FRAMEWORK;
 	s.MSBuildSettings = new DotNetMSBuildSettings();
@@ -439,7 +435,7 @@ Task("SetupTestPaths")
 			throw new Exception("If no app was specified, an app must be provided.");
 		}
 
-		var winVersion = $"{dotnetVersion}-windows{windowsVersion}";
+		var winVersion = $"{DotnetVersion}-windows{windowsVersion}";
 		var binDir = TEST_APP_PROJECT.GetDirectory().Combine("Controls.TestCases.HostApp").Combine(CONFIGURATION + "/" + winVersion).Combine(DOTNET_PLATFORM);
 		Information("BinDir: {0}", binDir);
 		var apps = GetFiles(binDir + "/*.exe").Where(c => !c.FullPath.EndsWith("createdump.exe"));
@@ -538,7 +534,7 @@ Task("uitest")
 
 	if (localDotnet)
 	{
-		var localDotnetRoot = MakeAbsolute(Directory("../../bin/dotnet/"));
+		var localDotnetRoot = MakeAbsolute(Directory("../../.dotnet/"));
 		Information("new dotnet root: {0}", localDotnetRoot);
 
 		DOTNET_ROOT = localDotnetRoot.ToString();

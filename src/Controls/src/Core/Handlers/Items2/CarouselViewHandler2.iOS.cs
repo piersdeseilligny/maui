@@ -1,11 +1,36 @@
 ﻿#nullable disable
 using System;
 using Foundation;
+using Microsoft.Maui.Controls.Handlers.Items;
 using Microsoft.Maui.Graphics;
 using UIKit;
 
 namespace Microsoft.Maui.Controls.Handlers.Items2
 {
+	public partial class CarouselViewHandler2
+	{
+
+		public CarouselViewHandler2() : base(Mapper)
+		{
+
+
+		}
+		public CarouselViewHandler2(PropertyMapper mapper = null) : base(mapper ?? Mapper)
+		{
+
+		}
+
+		public static PropertyMapper<CarouselView, CarouselViewHandler2> Mapper = new(ItemsViewMapper)
+		{
+
+			[Controls.CarouselView.IsSwipeEnabledProperty.PropertyName] = MapIsSwipeEnabled,
+			[Controls.CarouselView.PeekAreaInsetsProperty.PropertyName] = MapPeekAreaInsets,
+			[Controls.CarouselView.IsBounceEnabledProperty.PropertyName] = MapIsBounceEnabled,
+			[Controls.CarouselView.PositionProperty.PropertyName] = MapPosition,
+			[Controls.CarouselView.CurrentItemProperty.PropertyName] = MapCurrentItem
+		};
+	}
+
 	public partial class CarouselViewHandler2 : ItemsViewHandler2<CarouselView>
 	{
 		protected override CarouselViewController2 CreateController(CarouselView newElement, UICollectionViewLayout layout)
@@ -24,6 +49,10 @@ namespace Microsoft.Maui.Controls.Handlers.Items2
 
 			var layout = new UICollectionViewCompositionalLayout((sectionIndex, environment) =>
 			{
+				if (VirtualView is null)
+				{
+					return null;
+				}
 				double sectionMargin = 0.0;
 				if (!IsHorizontal)
 				{
@@ -52,57 +81,67 @@ namespace Microsoft.Maui.Controls.Handlers.Items2
 				var group = IsHorizontal ? NSCollectionLayoutGroup.GetHorizontalGroup(groupSize, item, 1) :
 										 NSCollectionLayoutGroup.GetVerticalGroup(groupSize, item, 1);
 
-				int currentPosition = 0;
-
 				// Create our section layout
 				var section = NSCollectionLayoutSection.Create(group: group);
 				section.InterGroupSpacing = itemSpacing;
 				section.OrthogonalScrollingBehavior = UICollectionLayoutSectionOrthogonalScrollingBehavior.GroupPagingCentered;
 				section.VisibleItemsInvalidationHandler = (items, offset, env) =>
 				{
+					//This will allow us to SetPosition when we are scrolling the items
+					//based on the current page
 					var page = (offset.X + sectionMargin) / env.Container.ContentSize.Width;
 
-					// Check if we are at the beginning or end of the page
-					if (Math.Abs(page % 1) <= (double.Epsilon * 100) && Controller.ItemsSource.ItemCount > 0)
+					// Check if we not are at the beginning or end of the page and if we have items
+					if (Math.Abs(page % 1) > (double.Epsilon * 100) || Controller.ItemsSource.ItemCount <= 0)
 					{
-						var pageIndex = (int)page;
+						return;
+					}
 
-						if (ItemsView.Loop)
+					var pageIndex = (int)page;
+					var carouselPosition = pageIndex;
+
+					var cv2Controller = (CarouselViewController2)Controller;
+
+					//If we are looping, we need to get the correct position
+					if (ItemsView.Loop)
+					{
+						var maxIndex = (Controller.ItemsSource as ILoopItemsViewSource).LoopCount - 1;
+
+						//To mimic looping, we needed to modify the ItemSource and inserted a new item at the beginning and at the end
+						if (pageIndex == maxIndex)
 						{
-							var maxIndex = (Controller.ItemsSource as Items.ILoopItemsViewSource).LoopCount - 1;
-
-							//To mimic looping, we needed to modify the ItemSource and inserted a new item at the beginning and at the end
-							if (pageIndex == maxIndex)
-							{
-								//When at last item, we need to change to 2nd item, so we can scroll right or left
-								pageIndex = 1;
-							}
-							else if (pageIndex == 0)
-							{
-								//When at first item, need to change to one before last, so we can scroll right or left
-								pageIndex = maxIndex - 1;
-							}
-
-							//since we added one item at the beginning, we need to subtract one
-							var realPage = pageIndex - 1;
-
-							if (currentPosition != realPage)
-							{
-								currentPosition = realPage;
-								var pageNumberIndex = NSIndexPath.FromRowSection(pageIndex, 0);
-								Controller.CollectionView.ScrollToItem(pageNumberIndex, UICollectionViewScrollPosition.Left, false);
-
-								//Update the CarouselView position
-								(Controller as CarouselViewController2)?.SetPosition(realPage);
-							}
+							//When at last item, we need to change to 2nd item, so we can scroll right or left
+							pageIndex = 1;
 						}
-						else
+						else if (pageIndex == 0)
 						{
-							(Controller as CarouselViewController2)?.SetPosition((int)page);
+							//When at first item, need to change to one before last, so we can scroll right or left
+							pageIndex = maxIndex - 1;
+						}
+
+						//since we added one item at the beginning of our ItemSource, we need to subtract one
+						carouselPosition = pageIndex - 1;
+
+						if (ItemsView.Position != carouselPosition)
+						{
+							//If we are updating the ItemsSource, we don't want to scroll the CollectionView
+							if (cv2Controller.IsUpdating())
+							{
+								return;
+							}
+
+							var goToIndexPath = cv2Controller.GetScrollToIndexPath(carouselPosition);
+
+							//This will move the carousel to fake the loop
+							Controller.CollectionView.ScrollToItem(NSIndexPath.FromItemSection(pageIndex, 0), UICollectionViewScrollPosition.Left, false);
+
 						}
 					}
-				};
+					
+					//Update the CarouselView position
+					cv2Controller?.SetPosition(carouselPosition);
 
+				};
 				return section;
 			});
 
@@ -111,23 +150,26 @@ namespace Microsoft.Maui.Controls.Handlers.Items2
 
 		protected override void ScrollToRequested(object sender, ScrollToRequestEventArgs args)
 		{
-			// if (VirtualView?.Loop == true)
-			// {
-			// 	var goToIndexPath = (Controller as CarouselViewController2).GetScrollToIndexPath(args.Index);
+			if (VirtualView?.Loop == true)
+			{
+				var goToIndexPath = (Controller as CarouselViewController2).GetScrollToIndexPath(args.Index);
 
-			// 	if (!IsIndexPathValid(goToIndexPath))
-			// 	{
-			// 		return;
-			// 	}
+				if (!IsIndexPathValid(goToIndexPath))
+				{
+					return;
+				}
 
-			// 	Controller.CollectionView.ScrollToItem(goToIndexPath,
-			// 		args.ScrollToPosition.ToCollectionViewScrollPosition( UICollectionViewScrollDirection.Vertical), // TODO: Fix _layout.ScrollDirection),
-			// 		args.IsAnimated);
-			// }
-			// else
-			// {
-			base.ScrollToRequested(sender, args);
-			// }
+				bool IsHorizontal = VirtualView.ItemsLayout.Orientation == ItemsLayoutOrientation.Horizontal;
+				UICollectionViewScrollDirection scrollDirection = IsHorizontal ? UICollectionViewScrollDirection.Horizontal : UICollectionViewScrollDirection.Vertical;
+
+				Controller.CollectionView.ScrollToItem(goToIndexPath,
+					args.ScrollToPosition.ToCollectionViewScrollPosition(scrollDirection), // TODO: Fix _layout.ScrollDirection),
+					args.IsAnimated);
+			}
+			else
+			{
+				base.ScrollToRequested(sender, args);
+			}
 		}
 
 		public static void MapIsSwipeEnabled(CarouselViewHandler2 handler, CarouselView carouselView)
