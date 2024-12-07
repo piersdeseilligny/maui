@@ -14,6 +14,6 @@ namespace Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific
 		/// <include file="../../../../docs/Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific/UIModalPresentationStyle.xml" path="//Member[@MemberName='PageSheet']/Docs/*" />
 		PageSheet,
 		Popover,
-		
+
 	}
 }
