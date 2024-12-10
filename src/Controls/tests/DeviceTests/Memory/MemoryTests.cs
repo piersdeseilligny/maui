@@ -298,19 +298,19 @@ public class MemoryTests : ControlsHandlerTestBase
 			});
 
 
-			#if IOS
+#if IOS
 			var controller = (cv.Handler as CollectionViewHandler).Controller;
 			controllerReference = new WeakReference(controller);
 			controller = null;
-			#else
+#else
 			controllerReference = new WeakReference(new object());
-			#endif
+#endif
 
 			cv = null;
 
 			await navPage.Navigation.PopAsync();
 		});
-		
+
 		await AssertionExtensions.WaitForGC(viewReference, handlerReference, controllerReference);
 	}
 
