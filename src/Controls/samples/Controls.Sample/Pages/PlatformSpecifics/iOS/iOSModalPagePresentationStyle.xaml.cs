@@ -14,13 +14,15 @@ namespace Maui.Controls.Sample.Pages
 		{
 			InitializeComponent();
 		}
-		public iOSModalPagePresentationStyle(UIModalPresentationStyle presentationStyle, View? modalOrigin=null, Rectangle? rectangle = null)
+		public iOSModalPagePresentationStyle(UIModalPresentationStyle presentationStyle, View? modalOrigin = null, Rectangle? rectangle = null)
 		{
 			InitializeComponent();
-			if(modalOrigin != null){
+			if (modalOrigin != null)
+			{
 				On<iOS>().SetModalPopoverView(modalOrigin);
 			}
-			if(rectangle != null){
+			if (rectangle != null)
+			{
 				On<iOS>().SetModalPopoverRect(rectangle.Value);
 			}
 			On<iOS>().SetModalPresentationStyle(presentationStyle);
@@ -38,7 +40,7 @@ namespace Maui.Controls.Sample.Pages
 		}
 		async void OnPushPopoverOffsetClicked(object sender, EventArgs e)
 		{
-			var offset = new System.Drawing.Rectangle(0,0,100,10);
+			var offset = new System.Drawing.Rectangle(0, 0, 100, 10);
 			Microsoft.Maui.Controls.Page pushMe = new iOSModalPagePresentationStyle(UIModalPresentationStyle.Popover, originButton2, offset);
 			await Navigation.PushModalAsync(pushMe);
 		}
