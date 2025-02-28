@@ -21,7 +21,7 @@ namespace Microsoft.Maui.DeviceTests
 		}
 
 		// Disabled due to https://github.com/dotnet/runtime/issues/111506
-		
+
 		// [Theory]
 		// [InlineData("https://test.com/file", "{hash}")]
 		// [InlineData("https://test.com/file#test", "{hash}")]
